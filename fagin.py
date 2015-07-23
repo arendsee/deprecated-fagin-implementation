@@ -69,6 +69,7 @@ class Tabular:
     def _load_rows(self):
         raise NotImplemented
 
+
 class Genome(Tabular):
     def _load_rows(self, rows):
         try:
@@ -78,9 +79,14 @@ class Genome(Tabular):
         except IndexError:
             err('GFF formated files must have 9 columns')
 
-    def add_synteny_annotations(self, syn):
+    def add_context(self, syn, width=10):
         for gene in self.genes:
-            gene.add_synteny(syn)
+            gene.get_context(syn, width)
+
+    def print_query_context(self):
+        for gene in self.genes:
+            for line in gene.query_context_string():
+                print(line)
 
     def __str__(self):
         return '\n'.join([str(g) for g in self.genes])
@@ -91,18 +97,18 @@ class Gene:
         self.start = start
         self.stop = stop
         self.name = name
-        self.synteny = None
+        self.context = None
 
-    def add_synteny(self, syn):
-        self.synteny = GeneSynteny(self, syn)
+    def get_context(self, syn):
+        self.context = Context(gene=self, syn=syn)
+
+    def query_context_string(self):
+        for s in self.context.to_string():
+            yield '%s\t%s' % (self.name, s)
 
     def __str__(self):
-        return('%s %s' % (self.name, self.synteny.matched))
+        return('%s' % (self.name))
 
-class GeneSynteny:
-    def __init__(self, gene, syn):
-        self.gene = gene
-        self.matched = syn.overlaps(gene)
 
 class Synteny(Tabular):
     def _load_rows(self, rows):
@@ -118,6 +124,8 @@ class Synteny(Tabular):
             8. orientation (+/-)
         All start and stop locations are indexed from 0.
         '''
+        # The synteny blocks are stored as a tuple of Block objects ordered by
+        # query chromosome and then by start point.
         try:
             # convert to appropriate types
             rows = ((a, int(b), int(c), d, int(e), int(f), float(g), h) for a,b,c,d,e,f,g,h in rows)
@@ -136,6 +144,8 @@ class Synteny(Tabular):
         self.length = len(self.blocks)
 
     def _calculate_chromosome_intervals(self):
+        '''
+        '''
         qchr = None
         for i, b in enumerate(self.blocks):
             self.tchr_map[i] = b.tchr
@@ -160,27 +170,14 @@ class Synteny(Tabular):
             if not all(k == self.blocks[i].qchr for i in range(ids[0], ids[1]+1)):
                 err('Internal error in Synteny class: chromosome mismatch')
 
-    def overlaps(self, gene):
-        '''
-        Return true if input gene overlaps a synteny block
-        '''
-        low, high = self.qchr_intervals[gene.chrm]
-        block_id = low + (high - low) // 2
-        max_iterations = math.ceil(math.log2(high - low)) + 1
-        for i in range(max_iterations):
-            block = self.blocks[block_id]
-            # If query endpoint is before the target startpoint
-            if block.before(gene):
-                high = block_id
-                block_id = high - math.ceil((high - low) / 2)
-            # If query startpoint is after the target endpoint
-            elif block.after(gene):
-                low = block_id
-                block_id = low + math.ceil((high - low) / 2)
-            # If neither of the above is true, the intervals must overlap
-            else:
-                return True
-        return False
+    def overlaps(self, gene, block_id):
+        return(self.blocks[block_id].overlaps(gene=gene))
+
+    def after(self, gene, block_id):
+        return(self.blocks[block_id].after(gene=gene))
+
+    def before(self, gene, block_id):
+        return(self.blocks[block_id].before(gene=gene))
 
 class Block:
     def __init__(self, qchr, qstart, qstop, tchr, tstart, tstop, pident):
@@ -210,6 +207,105 @@ class Block:
         '''
         return(gene.stop < self.qstart)
 
+    def __str__(self):
+        return '\t'.join((self.qchr,
+                          str(self.qstart),
+                          str(self.qstop),
+                          self.tchr,
+                          str(self.tstart),
+                          str(self.tstop),
+                          str(self.pident)))
+
+class Context:
+    def __init__(self, gene, syn, width=10):
+        self.width = width
+        anchor = self._anchor(gene=gene, syn=syn)
+        self.match = syn.overlaps(gene, anchor)
+        self.query_context = self._get_query_context(gene=gene, syn=syn, anchor=anchor)
+
+    def _anchor(self, gene, syn):
+        '''
+        Returns the index of a block overlapping the gene or, if the gene
+        overlaps no syntenic block, an adjacent block in log(n) time.
+        '''
+        # the first and last indices bounding the gene's chromosome
+        # (the Synteny constructor sorts the blocks tuple by chromosome)
+        low, high = syn.qchr_intervals[gene.chrm]
+
+        # initial block index (blocks are sorted by start point)
+        i = low + (high - low) // 2
+
+        for _ in range(math.ceil(math.log2(high - low)) + 1):
+            # If query endpoint is before the target startpoint
+            if syn.before(gene, i):
+                high = i
+                i = high - math.ceil((high - low) / 2)
+            # If query startpoint is after the target endpoint
+            elif syn.after(gene, i):
+                low = i
+                i = low + math.ceil((high - low) / 2)
+            # If neither of the above is true, the intervals must overlap
+            else:
+                return i
+        else:
+            return i
+
+    def _get_query_context(self, gene, syn, anchor):
+        '''
+        Given the index of one overlapping or adjacent gene, find the k
+        upstream, all overlapping, and k downstream syntenic blocks. Where k is
+        the context size set by the user (default=10)
+        '''
+        context = list()
+        ndown = 0
+        nup = 0
+        low, high = syn.qchr_intervals[gene.chrm]
+
+        for i in reversed(range(low, anchor)):
+            block = syn.blocks[i]
+
+            if block.overlaps(gene):
+                context.append(('overlap', block))
+            elif block.after(gene):
+                context.append(('upstream', block))
+                nup += 1
+
+            if nup == self.width:
+                break
+
+        for i in range(anchor, high+1):
+            block = syn.blocks[i]
+
+            if block.overlaps(gene):
+                context.append(('overlap', block))
+            elif block.before(gene):
+                context.append(('downstream', block))
+                ndown += 1
+
+            if ndown == self.width:
+                break
+
+        return(context)
+
+    def _get_target_context(self, syn):
+        '''
+        Find the context of the homologous synteny region in the target
+        '''
+        raise NotImplemented
+
+    def _classify_gene(self):
+        '''
+        Classify the gene into the following categories:
+            1. simple matching
+            2. simple missing
+        '''
+        raise NotImplemented
+
+    def to_string(self):
+        for b in self.query_context:
+            yield '%s\t%s' % (b[0], str(b[1]))
+
+
 class NStrings(Tabular):
     def _assign_colnames(self, columns):
         try:
@@ -226,6 +322,5 @@ if __name__ == '__main__':
     args = parse()
     gen = Genome(args.gff)
     syn = Synteny(args.synteny)
-    gen.add_synteny_annotations(syn)
-    print(gen)
-    # nstrings = NStrings(args.nstring)
+    gen.add_context(syn)
+    gen.print_query_context()
