@@ -2,6 +2,7 @@
 
 import argparse
 import sys
+import os
 import itertools
 import collections
 import math
@@ -19,6 +20,12 @@ def parse(argv=None):
         '-v', '--version',
         action='version',
         version='%(prog)s {}'.format(__version__)
+    )
+
+    parser.add_argument(
+        '-o', '--output_dir',
+        help='output directory (must be empty or nonexistant)',
+        default='output'
     )
 
     parser.add_argument(
@@ -91,10 +98,14 @@ class Genome(Tabular):
         for gene in self.genes:
             gene.get_context(syn, width)
 
-    def print_query_context(self):
+    def print_query_context(self, filename=sys.stdout):
+        try:
+            f = open(filename, 'w')
+        except TypeError:
+            f = filename
         for gene in self.genes:
             for line in gene.query_context_string():
-                print(line)
+                print(line, file=f)
 
     def __str__(self):
         return '\n'.join([str(g) for g in self.genes])
@@ -346,7 +357,15 @@ class NStrings(Tabular):
 
 if __name__ == '__main__':
     args = parse()
+    try:
+        os.mkdir(args.output_dir)
+    except FileExistsError:
+        if(os.listdir(args.output_dir)):
+            err('Output directory must be empty')
+    except PermissionError:
+        err("You don't have permission to make directory '%s'" % args.output_dir)
+
     gen = Genome(args.gff)
     syn = Synteny(args.synteny)
     gen.add_context(syn, width=10)
-    gen.print_query_context()
+    gen.print_query_context(os.path.join(args.output_dir, 'query_context.tab'))
