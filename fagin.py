@@ -42,10 +42,9 @@ def parse(argv=None):
     parser.add_argument(
         '-w', '--context_width',
         help='the number of upstream and downstream synteny blocks to include in the analysis',
-        metavar='N'
+        metavar='N',
         type=int,
-        default=10,
-
+        default=10
     )
 
     args = parser.parse_args(argv)
