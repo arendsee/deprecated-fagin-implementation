@@ -5,16 +5,59 @@ import unittest
 
 class TestSynteny(unittest.TestCase):
     def setUp(self):
-        synshort = (
+        self.syn = fagin.Synteny((
             't1 10  20  q1 10  20  .5 +',
             't1 30  40  q1 30  40  .5 +',
-            't1 50  60  q1 50  60  .5 +',
-        )
-        self.syn = fagin.Synteny(synshort)
+            't1 50  60  q1 50  60  .5 +'
+        ))
+        self.queryunsorted = fagin.Synteny((
+            'a 0  1  q1 10  20  .5 +',
+            'b 0  1  q2  0   6  .5 +',
+            'c 0  1  q2  0   5  .5 +',
+            'd 0  1  q1 30  40  .5 +'
+        ))
+        self.targetunsorted = fagin.Synteny((
+            't1 10  20  a 0  1  .5 +',
+            't2  0   6  b 0  1  .5 +',
+            't2  0   5  c 0  1  .5 +',
+            't1 30  40  d 0  1  .5 +'
+        ))
     def test_overlaps(self):
         self.assertTrue(self.syn.overlaps(fagin.Gene('q1', 25, 35, '.'), 1))
     def test_after(self):
         self.assertTrue(self.syn.before(fagin.Gene('q1', 10, 20, '.'), 1))
+    def test_query_sorted(self):
+        correct_order = ('a', 'd', 'c', 'b')
+        for block, correct_tchr in zip(self.queryunsorted.blocks, correct_order):
+            self.assertTrue(block.tchr == correct_tchr)
+    def test_query_index_ends(self):
+        # last on chromosome, so has no next
+        self.assertFalse(self.queryunsorted.blocks[1].qnext)
+        self.assertFalse(self.queryunsorted.blocks[3].qnext)
+    def test_query_index_starts(self):
+        # first on chromosome, so has no previous
+        self.assertFalse(self.queryunsorted.blocks[0].qprevious)
+        self.assertFalse(self.queryunsorted.blocks[2].qprevious)
+    def test_query_index_next(self):
+        self.assertTrue(self.queryunsorted.blocks[0].qnext.tchr == 'd')
+        self.assertTrue(self.queryunsorted.blocks[2].qnext.tchr == 'b')
+    def test_query_index_previous(self):
+        self.assertTrue(self.queryunsorted.blocks[1].qprevious.tchr == 'a')
+        self.assertTrue(self.queryunsorted.blocks[3].qprevious.tchr == 'c')
+    def test_target_index_ends(self):
+        self.assertFalse(self.targetunsorted.blocks[1].qnext)
+        self.assertFalse(self.targetunsorted.blocks[3].qnext)
+    def test_target_index_starts(self):
+        self.assertFalse(self.targetunsorted.blocks[0].qprevious)
+        self.assertFalse(self.targetunsorted.blocks[2].qprevious)
+    def test_target_index_next(self):
+        self.assertTrue(self.targetunsorted.blocks[0].tnext.qchr == 'd')
+        self.assertTrue(self.targetunsorted.blocks[2].tnext.qchr == 'b')
+    def test_target_index_previous(self):
+        self.assertTrue(self.targetunsorted.blocks[1].tprevious.qchr == 'c')
+        self.assertTrue(self.targetunsorted.blocks[3].tprevious.qchr == 'a')
+
+
     def test_before(self):
         self.assertTrue(self.syn.after(fagin.Gene('q1', 50, 60, '.'), 1))
 
