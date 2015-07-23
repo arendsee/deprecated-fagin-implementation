@@ -107,8 +107,8 @@ class Gene:
         self.name = name
         self.context = None
 
-    def get_context(self, syn):
-        self.context = Context(gene=self, syn=syn)
+    def get_context(self, syn, width=10):
+        self.context = Context(gene=self, syn=syn, width=width)
 
     def query_context_string(self):
         for s in self.context.to_string():
@@ -132,42 +132,63 @@ class Synteny(Tabular):
             8. orientation (+/-)
         All start and stop locations are indexed from 0.
         '''
-        # The synteny blocks are stored as a tuple of Block objects ordered by
-        # query chromosome and then by start point.
         try:
             # convert to appropriate types
             rows = ((a, int(b), int(c), d, int(e), int(f), float(g), h) for a,b,c,d,e,f,g,h in rows)
-            # sort by query chromosome and then by query start
-            rows = sorted(rows, key=lambda x: (x[3], x[4]))
             # load rows into Block objects
-            self.blocks = tuple(Block(*[r[i] for i in (3, 4, 5, 0, 1, 2, 6)]) for r in rows)
+            self.blocks = [Block(*[r[i] for i in (3, 4, 5, 0, 1, 2, 6)]) for r in rows]
         except IndexError:
             err('Synteny block file must have 8 columns')
         except ValueError:
             err('Columns 1,2,4,5 of the synteny file must be integers, column 6 must be numeric')
 
-        self.qchr_intervals = dict()
-        self.tchr_map = dict()
-        self._calculate_chromosome_intervals()
+        # create an linked list within the blocks ordered by target start sites
+        self._index_target()
+        # create an linked list within the blocks ordered by query start sites
+        self._index_query()
+        # order the list by query start sites
+        self.blocks.sort(key = lambda x: (x.qchr, x.qstart, -x.qstop))
+        # find query chromosome intervals
+        self.qchr_intervals = self._calculate_chromosome_intervals()
+        # number of blocks
         self.length = len(self.blocks)
 
+    def _index_target(self):
+        # sort by target chromosome and then by target start
+        self.blocks.sort(key = lambda x: (x.tchr, x.tstart, -x.tstop))
+        prior = self.blocks[0]
+        for b in self.blocks[1:]:
+            if prior.tchr == b.tchr:
+                prior.tnext = b
+                b.tprevious = prior
+            prior = b
+
+    def _index_query(self):
+        # sort by query chromosome and then by target start
+        self.blocks.sort(key = lambda x: (x.qchr, x.qstart, -x.qstop))
+        prior = self.blocks[0]
+        for b in self.blocks[1:]:
+            if prior.qchr == b.qchr:
+                prior.qnext = b
+                b.qprevious = prior
+            prior = b
+
     def _calculate_chromosome_intervals(self):
-        '''
-        '''
+        qchr_intervals = dict()
         qchr = None
         for i, b in enumerate(self.blocks):
-            self.tchr_map[i] = b.tchr
             if qchr == b.qchr:
                 continue
             elif i == 0:
                 qstart = 0
                 qchr = b.qchr
             else:
-                self.qchr_intervals[qchr] = (qstart, i-1)
+                qchr_intervals[qchr] = (qstart, i-1)
                 qstart = i
                 qchr = b.qchr
         else:
-            self.qchr_intervals[qchr] = (qstart, i)
+            qchr_intervals[qchr] = (qstart, i)
+        return(qchr_intervals)
 
     def _validate_data(self):
         if not all(0 <= b.pident <= 1 for b in self.blocks):
@@ -177,6 +198,34 @@ class Synteny(Tabular):
         for k,ids in self.qchr_intervals.items():
             if not all(k == self.blocks[i].qchr for i in range(ids[0], ids[1]+1)):
                 err('Internal error in Synteny class: chromosome mismatch')
+
+    def _anchor(self, gene):
+        '''
+        Returns the index of a block overlapping the gene or, if the gene
+        overlaps no syntenic block, an adjacent block in log(n) time.
+        '''
+        # the first and last indices bounding the gene's chromosome
+        # (the Synteny constructor sorts the blocks tuple by chromosome)
+        low, high = self.qchr_intervals[gene.chrm]
+
+        # initial block index (blocks are sorted by start point)
+        i = low + (high - low) // 2
+
+        for _ in range(math.ceil(math.log2(high - low)) + 1):
+            block = self.blocks[i]
+            # If query endpoint is before the target startpoint
+            if block.before(gene):
+                high = i
+                i = high - math.ceil((high - low) / 2)
+            # If query startpoint is after the target endpoint
+            elif block.after(gene):
+                low = i
+                i = low + math.ceil((high - low) / 2)
+            # If neither of the above is true, the intervals must overlap
+            else:
+                return block
+        else:
+            return block
 
     def overlaps(self, gene, block_id):
         return(self.blocks[block_id].overlaps(gene=gene))
@@ -196,6 +245,10 @@ class Block:
         self.tstart = tstart
         self.tstop = tstop
         self.pident = pident
+        self.tnext     = None # next block in target order
+        self.tprevious = None # previous block in target order
+        self.qnext     = None # next block in query order
+        self.qprevious = None # previous block in query order
 
     def overlaps(self, gene):
         '''
@@ -227,36 +280,9 @@ class Block:
 class Context:
     def __init__(self, gene, syn, width=10):
         self.width = width
-        anchor = self._anchor(gene=gene, syn=syn)
-        self.match = syn.overlaps(gene, anchor)
+        anchor = syn._anchor(gene=gene)
+        self.match = anchor.overlaps(gene)
         self.query_context = self._get_query_context(gene=gene, syn=syn, anchor=anchor)
-
-    def _anchor(self, gene, syn):
-        '''
-        Returns the index of a block overlapping the gene or, if the gene
-        overlaps no syntenic block, an adjacent block in log(n) time.
-        '''
-        # the first and last indices bounding the gene's chromosome
-        # (the Synteny constructor sorts the blocks tuple by chromosome)
-        low, high = syn.qchr_intervals[gene.chrm]
-
-        # initial block index (blocks are sorted by start point)
-        i = low + (high - low) // 2
-
-        for _ in range(math.ceil(math.log2(high - low)) + 1):
-            # If query endpoint is before the target startpoint
-            if syn.before(gene, i):
-                high = i
-                i = high - math.ceil((high - low) / 2)
-            # If query startpoint is after the target endpoint
-            elif syn.after(gene, i):
-                low = i
-                i = low + math.ceil((high - low) / 2)
-            # If neither of the above is true, the intervals must overlap
-            else:
-                return i
-        else:
-            return i
 
     def _get_query_context(self, gene, syn, anchor):
         '''
@@ -265,33 +291,25 @@ class Context:
         the context size set by the user (default=10)
         '''
         context = list()
-        ndown = 0
         nup = 0
-        low, high = syn.qchr_intervals[gene.chrm]
-
-        for i in reversed(range(low, anchor)):
-            block = syn.blocks[i]
-
+        block = anchor
+        while nup != self.width and block:
             if block.overlaps(gene):
                 context.append(('overlap', block))
             elif block.after(gene):
                 context.append(('upstream', block))
                 nup += 1
+            block = block.qprevious
 
-            if nup == self.width:
-                break
-
-        for i in range(anchor, high+1):
-            block = syn.blocks[i]
-
+        ndown = 0
+        block = anchor.qnext
+        while ndown != self.width and block:
             if block.overlaps(gene):
                 context.append(('overlap', block))
             elif block.before(gene):
                 context.append(('downstream', block))
                 ndown += 1
-
-            if ndown == self.width:
-                break
+            block = block.qnext
 
         return(context)
 
@@ -330,5 +348,5 @@ if __name__ == '__main__':
     args = parse()
     gen = Genome(args.gff)
     syn = Synteny(args.synteny)
-    gen.add_context(syn)
+    gen.add_context(syn, width=10)
     gen.print_query_context()
