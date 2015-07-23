@@ -39,6 +39,15 @@ def parse(argv=None):
         help='tab-delimited file representing chr, start, and length of N repeats in target genome'
     )
 
+    parser.add_argument(
+        '-w', '--context_width',
+        help='the number of upstream and downstream synteny blocks to include in the analysis',
+        metavar='N'
+        type=int,
+        default=10,
+
+    )
+
     args = parser.parse_args(argv)
     return(args)
 
