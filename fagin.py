@@ -63,15 +63,39 @@ def err(msg):
 def toint(x):
     return tuple(int(i) for i in x)
 
+def allequal(x):
+    return(len(set(x)) == 1)
+
+def overlaps(a, b):
+    return((a.stop >= b.start) and (a.start <= b.stop))
+
+def get_preceding(ordint, n):
+    '''
+    Retrieve the preceding n intervals
+    '''
+    for _ in range(n):
+        try:
+            ordint = ordint.last
+            yield ordint
+        except AttributeError:
+            break
+
+def get_following(ordint, n):
+    '''
+    Retrieve the following n intervals
+    '''
+    for _ in range(n):
+        try:
+            ordint = ordint.next
+            yield ordint
+        except AttributeError:
+            break
 
 class Interval:
     def __init__(self, contig, start, stop):
         self.start = start
         self.stop = stop
         self.contig = contig
-
-    def overlaps(self, other):
-        return((other.stop > self.start) and (other.start <= self.stop))
 
     def __str__(self):
         return('\t'.join((self.contig, str(self.start), str(self.stop))))
@@ -98,10 +122,25 @@ class IntervalSet:
         Returns the index of a block overlapping the gene or, if the gene
         overlaps no syntenic block, an adjacent block in log(n) time.
         '''
-        con = self.contigs[other.contig]
+
+        # return None if the contig of the input is not in the interval set
+        if other.contig in self.contigs:
+            con = self.contigs[other.contig]
+        else:
+            return None
+
+        # original bounds of the search space (these will be tightened until a
+        # solution is found
         low, high = 0, len(con) - 1
+
+        # starting index (start in the middle of the vector)
         i = high // 2
-        for _ in range(math.ceil(math.log2(high - low)) + 1):
+
+        # maximum number of steps to find solution
+        steps = math.ceil(math.log2(high - low)) + 1
+
+        # binary search
+        for _ in range(steps):
             this = con[i]
             if other.stop < this.start:
                 high = i
@@ -114,9 +153,11 @@ class IntervalSet:
         else:
             return this
 
-class OrderedInterval(Interval):
-    def __init__(self, last=None, next=None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+class OrderedInterval:
+    def __init__(self, contig, start, stop, last, next):
+        self.start = start
+        self.stop = stop
+        self.contig = contig
         self.last = last
         self.next = next
 
@@ -127,9 +168,13 @@ class OrderedInterval(Interval):
         obj.next.last = obj.last
         del obj
 
-class MappedInterval(OrderedInterval):
-    def __init__(self, over=None, score=None, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+class MappedInterval:
+    def __init__(self, contig, start, stop, last=None, next=None, over=None, score=None):
+        self.start = start
+        self.stop = stop
+        self.contig = contig
+        self.last = last
+        self.next = next
         self.over = over
         self.score = score
 
@@ -143,28 +188,14 @@ class MappedInterval(OrderedInterval):
         del obj.over
         del obj
 
-class Gene(OrderedInterval):
-    def __init__(self, name, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+class Gene:
+    def __init__(self, contig, start, stop, last=None, next=None, name=None):
+        self.start = start
+        self.stop = stop
+        self.contig = contig
+        self.last = last
+        self.next = next
         self.name = name
-        self.links = []
-
-    def add_links(self, syn):
-        anchor = syn.anchor_query(interval=self)
-        m = anchor
-        while m and m.overlaps(self):
-            self.links.append(m)
-            m = m.last
-        m = anchor.next
-        while m and m.overlaps(self):
-            self.links.append(m)
-            m = m.next
-
-    def print_links(self):
-        if self.links:
-            rows = ['\t'.join(self.name, str(link)) for link in self.links]
-            print('\n'.join(rows))
-
 
 class Tabular:
     def __init__(self, tab_data, validate=True):
@@ -199,9 +230,9 @@ class Genome(Tabular, IntervalSet):
         except ValueError:
             err("Start and stop positions must be integers")
 
-    def add_links(self, syn):
+    def analyze(self, syn):
         for g in self.intervals():
-            g.add_links(syn)
+            yield Result(gene=g, syn=syn)
 
     def __str__(self):
         rows = ((g.name, g.contig, str(g.start), str(g.stop)) for g in self.intervals())
@@ -212,20 +243,20 @@ class Synteny(Tabular):
     def _load_rows(self, rows):
         '''
         Load the synteny file. This file must have the following columns:
-            0. target scaffold
-            1. target start
-            2. target stop
-            3. query scaffold
-            4. query start
-            5. query stop
+            0. query scaffold
+            1. query start
+            2. query stop
+            3. target scaffold
+            4. target start
+            5. target stop
             6. proportion identity (0 <= x <= 1)
             7. orientation (+/-)
         All start and stop locations are indexed from 0.
         '''
         try:
             # convert to appropriate types
-            qint = [MappedInterval(contig=d, start=int(e), stop=int(f)) for a,b,c,d,e,f,g,h in rows]
-            tint = [MappedInterval(contig=a, start=int(b), stop=int(c)) for a,b,c,d,e,f,g,h in rows]
+            qint = [MappedInterval(contig=a, start=int(b), stop=int(c)) for a,b,c,d,e,f,g,h in rows]
+            tint = [MappedInterval(contig=d, start=int(e), stop=int(f)) for a,b,c,d,e,f,g,h in rows]
             scores = [float(g) for a,b,c,d,e,f,g,h in rows]
         except IndexError:
             err('Synteny block file must have 8 columns')
@@ -252,6 +283,87 @@ class Synteny(Tabular):
             if interval.score < minscore:
                 interval.remove()
 
+class Result:
+    def __init__(self, gene, syn, width=1):
+        self.anchor = syn.anchor_query(gene)
+        self.gene = gene
+        self.width = width
+        if self.anchor:
+            self.links = self._get_links()
+
+            self.context = self._get_context()
+
+            # does the gene overlap a syntenic block?
+            self.is_present = bool(self.links)
+
+            # are the upstream and downstream blocks in order on the same
+            # chromosome?
+            self.is_simple = self._get_is_simple()
+        else:
+            self.context = None
+            self.is_present = False
+            self.is_simple = False
+
+    def _get_links(self):
+        m = self.anchor
+        links = []
+        while m and overlaps(m, self.gene):
+            links.append(m)
+            m = m.last
+        m = self.anchor.next
+        while m and overlaps(m, self.gene):
+            links.append(m)
+            m = m.next
+        links = sorted(links, key=lambda x: (x.start, x.stop))
+        return(links)
+
+    def _get_context(self):
+        # Get the syntenic blocks flanking (but not overlapping) the gene
+        if not self.links:
+            if self.gene.stop < self.anchor.start:
+                lower, upper = (self.anchor.last, self.anchor)
+            else:
+                lower, upper = (self.anchor, self.anchor.next)
+        else:
+            lower, upper = (self.links[0].last, self.links[-1].next)
+
+        # get the context of gene
+        lower_context = get_preceding(lower, self.width)
+        upper_context = get_following(upper, self.width)
+        everything = [x for x in itertools.chain(lower_context, self.links, upper_context) if x]
+
+        return(everything)
+
+    def _get_is_simple(self):
+        # are all the intervals on the same contig?
+        all_on_same_contig = allequal((x.contig for x in self.context))
+
+        # make an interval describing the start and stop of the query context
+        minstart = min(x.start for x in self.context)
+        maxstop  = max(x.stop  for x in self.context)
+        query_bound = Interval(contig=self.anchor.contig, start=minstart, stop=maxstop)
+
+        # do all the syntenic blocks within the target range map to regions within the query range?
+        t = sorted(self.context, key=lambda x: (x.over.start))
+        q = t[0]
+        has_outer = False
+        while True:
+            if not q:
+                break
+            elif q.start > t[-1].stop:
+                break
+            elif not overlaps(q.over, query_bound):
+                has_outer = True
+                break
+            else:
+                q = q.next
+
+        is_simple = all_on_same_contig and not has_outer
+        return(is_simple)
+
+    def __str__(self):
+        out = '\t'.join((self.gene.name, str(self.is_present), str(self.is_simple)))
+        return(out)
 
 class NStrings(Tabular):
     def _assign_colnames(self, columns):
@@ -277,6 +389,6 @@ if __name__ == '__main__':
 
     gen = Genome(args.gff)
     syn = Synteny(args.synteny)
-    gen.add_links(syn)
-    for gene in gen.intervals():
-        print(gene.name, len(gene.links))
+    g = list(gen.analyze(syn))
+    for result in gen.analyze(syn):
+        print(result)
