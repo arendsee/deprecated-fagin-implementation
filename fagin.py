@@ -153,11 +153,9 @@ class IntervalSet:
         else:
             return this
 
-class OrderedInterval:
-    def __init__(self, contig, start, stop, last, next):
-        self.start = start
-        self.stop = stop
-        self.contig = contig
+class OrderedInterval(Interval):
+    def __init__(self, last=None, next=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.last = last
         self.next = next
 
@@ -168,13 +166,9 @@ class OrderedInterval:
         obj.next.last = obj.last
         del obj
 
-class MappedInterval:
-    def __init__(self, contig, start, stop, last=None, next=None, over=None, score=None):
-        self.start = start
-        self.stop = stop
-        self.contig = contig
-        self.last = last
-        self.next = next
+class MappedInterval(OrderedInterval):
+    def __init__(self, over=None, score=None, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.over = over
         self.score = score
 
@@ -188,13 +182,9 @@ class MappedInterval:
         del obj.over
         del obj
 
-class Gene:
-    def __init__(self, contig, start, stop, last=None, next=None, name=None):
-        self.start = start
-        self.stop = stop
-        self.contig = contig
-        self.last = last
-        self.next = next
+class Gene(OrderedInterval):
+    def __init__(self, name, *args, **kwargs):
+        super().__init__(*args, **kwargs)
         self.name = name
 
 class Tabular:
