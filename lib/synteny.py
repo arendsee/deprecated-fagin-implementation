@@ -1,6 +1,6 @@
 import itertools
-from src.intervals import MappedInterval, IntervalSet
-from src.util import Tabular
+from lib.intervals import MappedInterval, IntervalSet
+from lib.util import Tabular, err
 
 class Synteny(Tabular):
     def _load_rows(self, rows):
@@ -34,6 +34,9 @@ class Synteny(Tabular):
     def _validate_data(self):
         if not all(0 <= b.score <= 1 for b in itertools.chain(self.query.intervals(), self.target.intervals())):
             err('In synteny file, proportion identity column (column 7) must be between 0 and 1')
+
+    def _missing_input_error(self):
+        err('Synteny file is missing or unreadable')
 
     def anchor_query(self, interval):
         return(self.query.anchor(interval))

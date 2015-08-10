@@ -1,6 +1,6 @@
 import collections
-from src.intervals import OrderedInterval, IntervalSet
-from src.util import Tabular
+from lib.intervals import OrderedInterval, IntervalSet
+from lib.util import Tabular, err
 
 class Gene(OrderedInterval):
     def __init__(self, name, *args, **kwargs):
@@ -19,6 +19,9 @@ class Genome(Tabular, IntervalSet):
             err('GFF formated files must have 9 columns')
         except ValueError:
             err("Start and stop positions must be integers")
+
+    def _missing_input_error(self):
+        err('GFF file is missing or unreadable')
 
     def __str__(self):
         rows = ((g.name, g.contig, str(g.start), str(g.stop)) for g in self.intervals())

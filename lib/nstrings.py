@@ -1,4 +1,4 @@
-import src.util as util
+import lib.util as util
 
 class NStrings(util.Tabular):
     def _assign_colnames(self, columns):

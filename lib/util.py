@@ -1,9 +1,14 @@
+import sys
+
 def err(msg):
     sys.exit(msg)
 
 class Tabular:
     def __init__(self, tab_data, validate=True):
-        rows = tuple(s.split() for s in tab_data if s[0] != '#')
+        try:
+            rows = tuple(s.split() for s in tab_data if s[0] != '#')
+        except TypeError:
+            self._missing_input_error()
         self._load_rows(rows)
         if validate:
             self._validate_row_lengths(rows)
@@ -21,3 +26,5 @@ class Tabular:
     def _load_rows(self):
         raise NotImplemented
 
+    def _missing_input_error(self):
+        raise NotImplemented

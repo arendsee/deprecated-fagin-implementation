@@ -7,10 +7,11 @@ import itertools
 import collections
 import math
 
-import src.util      as util
-import src.intervals as intervals
-import src.genome    as genome
-import src.synteny   as synteny
+import lib.util      as util
+import lib.intervals as intervals
+import lib.genome    as genome
+import lib.synteny   as synteny
+import lib.exonerate as exonerate
 
 __version__ = '0.0.1'
 
@@ -45,6 +46,12 @@ def parse(argv=None):
     )
 
     parser.add_argument(
+        '--exonerate',
+        type=argparse.FileType('r'),
+        help='the parsed output of exonerate'
+    )
+
+    parser.add_argument(
         '--nstring',
         type=argparse.FileType('r'),
         help='tab-delimited file representing chr, start, and length of N repeats in target genome'
@@ -61,68 +68,88 @@ def parse(argv=None):
     args = parser.parse_args(argv)
     return(args)
 
-class Result:
-    def __init__(self, gene, syn, width=1):
-        self.anchor = syn.anchor_query(gene)
-        self.gene = gene
-        self.width = width
-        if self.anchor:
-            self.links = self._get_links()
 
-            self.context = self._get_context()
+class ResultSet:
+    def __init__(self, gen, syn, exo, width=1):
+        self.results = {g.name: Result(g, syn, width) for g in gen.intervals()}
+        for hit in exo.generator():
+            self.results[hit.name].add_exonerate_hit(hit)
+
+    def get(self, name):
+        return self.results[name]
+
+class Result:
+    '''
+    Synthesizes all data sets into final report
+    '''
+    def __init__(self, gene, syn, width=1):
+        self.name = gene.name
+        self.gene = gene
+        self._syntenic_analysis(syn=syn, width=width)
+
+    def add_exonerate_hit(self, exonerate_hit):
+        pass
+
+    def _syntenic_analysis(self, syn, width):
+        anchor = syn.anchor_query(self.gene)
+        links, context, is_present, is_simple = None, None, False, False
+        if anchor:
+            links = self._get_links(anchor=anchor)
+
+            context = self._get_context(anchor=anchor, links=links, width=width)
 
             # does the gene overlap a syntenic block?
-            self.is_present = bool(self.links)
+            is_present = bool(links)
 
             # are the upstream and downstream blocks in order on the same
             # chromosome?
-            self.is_simple = self._get_is_simple()
-        else:
-            self.context = None
-            self.is_present = False
-            self.is_simple = False
+            is_simple = self._get_is_simple(anchor=anchor, context=context)
 
-    def _get_links(self):
-        m = self.anchor
+        self.context    = context
+        self.is_present = is_present
+        self.is_simple  = is_simple
+
+    def _get_links(self, anchor):
+        m = anchor
         links = []
         while m and intervals.overlaps(m, self.gene):
             links.append(m)
             m = m.last
-        m = self.anchor.next
+        m = anchor.next
         while m and intervals.overlaps(m, self.gene):
             links.append(m)
             m = m.next
         links = sorted(links, key=lambda x: (x.start, x.stop))
         return(links)
 
-    def _get_context(self):
+    def _get_context(self, anchor, links, width):
         # Get the syntenic blocks flanking (but not overlapping) the gene
-        if not self.links:
-            if self.gene.stop < self.anchor.start:
-                lower, upper = (self.anchor.last, self.anchor)
+        if not links:
+            if self.gene.stop < anchor.start:
+                lower, upper = (anchor.last, anchor)
             else:
-                lower, upper = (self.anchor, self.anchor.next)
+                lower, upper = (anchor, anchor.next)
         else:
-            lower, upper = (self.links[0].last, self.links[-1].next)
+            lower, upper = (links[0].last, links[-1].next)
 
         # get the context of gene
-        lower_context = intervals.get_preceding(lower, self.width)
-        upper_context = intervals.get_following(upper, self.width)
-        everything = [x for x in itertools.chain(lower_context, self.links, upper_context) if x]
+        lower_context = intervals.get_preceding(lower, width)
+        upper_context = intervals.get_following(upper, width)
+        everything = [x for x in itertools.chain(lower_context, links, upper_context) if x]
 
         return(everything)
 
-    def _get_is_simple(self):
+    def _get_is_simple(self, anchor, context):
         # are all the intervals on the same contig?
-        all_on_same_contig = intervals.allequal((x.contig for x in self.context))
+        all_on_same_contig = intervals.allequal((x.contig for x in context))
 
         # make an interval describing the start and stop of the query context
-        minstart = min(x.start for x in self.context)
-        maxstop  = max(x.stop  for x in self.context)
-        query_bound = intervals.Interval(contig=self.anchor.contig, start=minstart, stop=maxstop)
+        minstart = min(x.start for x in context)
+        maxstop  = max(x.stop  for x in context)
+        query_bound = intervals.Interval(contig=anchor.contig, start=minstart, stop=maxstop)
 
         # do all the syntenic blocks within the target range map to regions within the query range?
-        t = sorted(self.context, key=lambda x: (x.over.start))
+        t = sorted(context, key=lambda x: (x.over.start))
         q = t[0]
         has_outer = False
         while True:
@@ -156,6 +183,5 @@ if __name__ == '__main__':
 
     gen = genome.Genome(args.gff)
     syn = synteny.Synteny(args.synteny)
-    for g in gen.intervals():
-        print(Result(gene=g, syn=syn))
-
+    exo = exonerate.Exonerate(args.exonerate, genome=gen)
+    res = ResultSet(gen=gen, syn=syn, exo=exo, width=10)
