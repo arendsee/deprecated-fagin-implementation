@@ -73,7 +73,7 @@ class ResultSet:
     def __init__(self, gen, syn, exo, width=1):
         self.results = {g.name: Result(g, syn, width) for g in gen.intervals()}
         for hit in exo.generator():
-            self.results[hit.name].add_exonerate_hit(hit)
+            self.results[hit.name].add_exonerate_hit(hit, syn)
 
     def get(self, name):
         return self.results[name]
@@ -85,14 +85,23 @@ class Result:
     def __init__(self, gene, syn, width=1):
         self.name = gene.name
         self.gene = gene
+
+        # variables set in _syntenic_analysis
+        self.context = None
+        self.is_present = False
+        self.is_simple = False
         self._syntenic_analysis(syn=syn, width=width)
 
-    def add_exonerate_hit(self, exonerate_hit):
-        pass
+        # variables modified when adding exonerate hits
+        self.hits = []
+
+    def add_exonerate_hit(self, hit, syn):
+        assert(hit.name == self.name)
+
+        anchor = syn.anchor_query(hit.target)
 
     def _syntenic_analysis(self, syn, width):
         anchor = syn.anchor_query(self.gene)
-        links, context, is_present, is_simple = None, None, False, False
         if anchor:
             links = self._get_links(anchor=anchor)
 
@@ -110,6 +119,9 @@ class Result:
         self.is_simple  = is_simple
 
     def _get_links(self, anchor):
+        '''
+        find contiguous synteny blocks in the target that all overlap query gene
+        '''
         m = anchor
         links = []
         while m and intervals.overlaps(m, self.gene):
