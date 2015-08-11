@@ -86,24 +86,55 @@ class Result:
         self.name = gene.name
         self.gene = gene
 
-        # variables set in _syntenic_analysis
-        self.context = None
+        # --- variables set in _syntenic_analysis ---
+        # -------------------------------------------
         self.is_present = False
-        self.is_simple = False
+        self.is_simple  = False
+        self.lower = None  # the block downstream of the last homologous block
+        self.upper = None  # the block ustream of the last homologous block
         self._syntenic_analysis(syn=syn, width=width)
 
-        # variables modified when adding exonerate hits
+        # --- variables modified when adding exonerate hits ---
+        # -----------------------------------------------------
+        # declaration of an interval containing the flanks around the gene
+        # in the query
+        self.query_flanks = None
         self.hits = []
 
-    def add_exonerate_hit(self, hit, syn):
+    def add_exonerate_hit(self, hit, syn, flank_width=25000):
+        '''
+        Input one hit from an exonerate output.
+        '''
         assert(hit.name == self.name)
 
+        if not self.query_flanks:
+            self.query_flanks = intervals.Interval(
+                contig=self.gene.contig,
+                start=max(0, self.gene.start - flank_width),
+                stop=(self.gene.stop + flank_width))
+
         anchor = syn.anchor_query(hit.target)
+        if anchor:
+            target_flanks = intervals.Interval(
+                contig=anchor.contig,
+                start=max(0, anchor.start - 2 * flank_width),
+                stop=(anchor.stop + 2 * flank_width))
+        else:
+            print("%s has no match" % self.gene.name)
 
     def _syntenic_analysis(self, syn, width):
+        '''
+        Analyzes the synteny data, setting the following variables
+        1. is_present - does at least one syntenic block overlap the query gene?
+        2. is_simple - all the up and downstream syntenic blocks on the same
+              target contig and do they all map to the query region?
+        3. lower - an internal variable storing the first non-overlapping block before the gene
+        4. upper - an internal variable storing the first non-overlapping block after the gene
+        '''
         anchor = syn.anchor_query(self.gene)
         if anchor:
             links = self._get_links(anchor=anchor)
+            self.lower, self.upper = self._get_flanks(links=links, anchor=anchor)
 
             context = self._get_context(anchor=anchor, links=links, width=width)
 
@@ -114,13 +145,12 @@ class Result:
             # chromosome?
             is_simple = self._get_is_simple(anchor=anchor, context=context)
 
-        self.context    = context
         self.is_present = is_present
         self.is_simple  = is_simple
 
     def _get_links(self, anchor):
         '''
-        find contiguous synteny blocks in the target that all overlap query gene
+        find contiguous synteny blocks in the query that all overlap gene
         '''
         m = anchor
         links = []
@@ -134,8 +164,10 @@ class Result:
         links = sorted(links, key=lambda x: (x.start, x.stop))
         return(links)
 
-    def _get_context(self, anchor, links, width):
-        # Get the syntenic blocks flanking (but not overlapping) the gene
+    def _get_flanks(self, links, anchor):
+        '''
+        Get the syntenic blocks flanking (but not overlapping) the gene
+        '''
         if not links:
             if self.gene.stop < anchor.start:
                 lower, upper = (anchor.last, anchor)
@@ -143,12 +175,15 @@ class Result:
                 lower, upper = (anchor, anchor.next)
         else:
             lower, upper = (links[0].last, links[-1].next)
+        return((lower, upper))
 
-        # get the context of gene
-        lower_context = intervals.get_preceding(lower, width)
-        upper_context = intervals.get_following(upper, width)
+    def _get_context(self, anchor, links, width):
+        '''
+        get all blocks on the query between, but not including, the flanking genes
+        '''
+        lower_context = intervals.get_preceding(self.lower, width)
+        upper_context = intervals.get_following(self.upper, width)
         everything = [x for x in itertools.chain(lower_context, links, upper_context) if x]
-
         return(everything)
 
     def _get_is_simple(self, anchor, context):
