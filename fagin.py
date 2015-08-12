@@ -101,6 +101,9 @@ class Result:
         self.query_flanks = None
         self.hits = []
 
+    def calculate_score(self, query, syn, flank_width):
+        pass
+
     def add_exonerate_hit(self, hit, syn, flank_width=25000):
         '''
         Input one hit from an exonerate output.
@@ -113,14 +116,39 @@ class Result:
                 start=max(0, self.gene.start - flank_width),
                 stop=(self.gene.stop + flank_width))
 
-        anchor = syn.anchor_query(hit.target)
+        anchor = syn.anchor_target(hit.target)
         if anchor:
             target_flanks = intervals.Interval(
                 contig=anchor.contig,
                 start=max(0, anchor.start - 2 * flank_width),
                 stop=(anchor.stop + 2 * flank_width))
         else:
-            print("%s has no match" % self.gene.name)
+            print("%s is on a contig with no syntenic blocks: %s" % (self.gene.name, str(hit.target)), file=sys.stderr)
+            return False
+
+        # === my hacky first order solution ===
+
+        # I simply count the number of nearby (by an arbitrary cutoff) blocks
+        # that map to a region near the target interval. If there are more than
+        # a certain number, I keep the exonerate hit.
+
+        matching, total = (0, 0)
+        a, b = (self.lower, self.upper)
+
+        while intervals.overlaps(self.query_flanks, a):
+            total += 1
+            matching += intervals.overlaps(target_flanks, a.over)
+            a = a.last
+
+        while intervals.overlaps(self.query_flanks, b):
+            total += 1
+            matching += intervals.overlaps(target_flanks, b.over)
+            b = b.next
+
+        if matching > 5:
+            self.hits.append(hit)
+
+
 
     def _syntenic_analysis(self, syn, width):
         '''
@@ -214,7 +242,8 @@ class Result:
         return(is_simple)
 
     def __str__(self):
-        out = '\t'.join((self.gene.name, str(self.is_present), str(self.is_simple)))
+        # out = '\t'.join((self.gene.name, str(self.is_present), str(self.is_simple)))
+        out = '\n'.join([str(h) for h in self.hits])
         return(out)
 
 
@@ -232,3 +261,5 @@ if __name__ == '__main__':
     syn = synteny.Synteny(args.synteny)
     exo = exonerate.Exonerate(args.exonerate, genome=gen)
     res = ResultSet(gen=gen, syn=syn, exo=exo, width=10)
+    for r in res.results.values():
+        print(str(r))
