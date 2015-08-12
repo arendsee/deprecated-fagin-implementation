@@ -6,7 +6,10 @@ def allequal(x):
     return(len(set(x)) == 1)
 
 def overlaps(a, b):
-    return((a.stop >= b.start) and (a.start <= b.stop))
+    try:
+        return (a.stop >= b.start) and (a.start <= b.stop)
+    except TypeError:
+        return False
 
 def get_preceding(ordint, n):
     '''
