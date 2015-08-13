@@ -33,6 +33,13 @@ def parse(argv=None):
         default='output'
     )
 
+    parser.add_argument(
+        '-q', '--quiet',
+        help='suppress "contig with no syntenic block" warnings',
+        action="store_true",
+        default=False
+    )
+
     # === INPUTS ===
 
     parser.add_argument(
@@ -109,7 +116,8 @@ if __name__ == '__main__':
     hit_merger = hit_merger.HitMerger(
         flank_width        = args.hit_flank_width,
         min_neighbors      = args.hit_min_neighbors,
-        target_flank_ratio = args.hit_target_flank_ratio
+        target_flank_ratio = args.hit_target_flank_ratio,
+        quiet              = args.quiet
     )
 
     syn_merger = syn_merger.SynMerger(

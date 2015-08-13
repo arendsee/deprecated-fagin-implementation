@@ -2,10 +2,11 @@ import sys
 import lib.intervals as intervals
 
 class HitMerger:
-    def __init__(self, flank_width, min_neighbors, target_flank_ratio):
+    def __init__(self, flank_width, min_neighbors, target_flank_ratio, quiet=False):
         self.flank_width = flank_width
         self.min_neighbors = min_neighbors
         self.target_flank_ratio = target_flank_ratio
+        self.quiet = quiet
 
     def merge(self, result, hit, syn):
         '''
@@ -19,7 +20,9 @@ class HitMerger:
 
         # If no blocks map to the specified target contig, stop
         if not anchor:
-            print("%s is on a contig with no syntenic blocks: %s" % (result.gene.name, str(hit.target)), file=sys.stderr)
+            if not self.quiet:
+                msg = "%s is on a contig with no syntenic blocks: %s"
+                print(msg % (result.gene.name, str(hit.target)), file=sys.stderr)
             return False
 
         # Define the interval in which to search for neighbors in the target
