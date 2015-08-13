@@ -1,14 +1,9 @@
 #!/usr/bin/env python3
 
 import argparse
-import sys
 import os
-import itertools
-import collections
-import math
 
 import lib.util           as util
-import lib.intervals      as intervals
 import lib.genome         as genome
 import lib.synteny        as synteny
 import lib.exonerate      as exonerate
@@ -30,38 +25,72 @@ def parse(argv=None):
         version='%(prog)s {}'.format(__version__)
     )
 
+    # === OUTPUTS ===
+
     parser.add_argument(
         '-o', '--output_dir',
         help='output directory (must be empty or nonexistant)',
         default='output'
     )
 
+    # === INPUTS ===
+
     parser.add_argument(
-        '--gff',
-        type=argparse.FileType('r'),
-        help='gff formated gene models for the query species'
+        '--gen-file',
+        help='gff formated gene models for the query species',
+        type=argparse.FileType('r')
     )
 
     parser.add_argument(
-        '--synteny',
-        type=argparse.FileType('r'),
-        help='output tabular output from SatsumaSynteny (query versus target)'
+        '--syn-file',
+        help='output tabular output from SatsumaSynteny (query versus target)',
+        type=argparse.FileType('r')
     )
 
     parser.add_argument(
-        '--exonerate',
-        type=argparse.FileType('r'),
-        help='the parsed output of exonerate'
+        '--hit-file',
+        help='the parsed output of Exonerate',
+        type=argparse.FileType('r')
     )
 
     parser.add_argument(
-        '--nstring',
-        type=argparse.FileType('r'),
-        help='tab-delimited file representing chr, start, and length of N repeats in target genome'
+        '--nstr-file',
+        help='tab-delimited file representing chr, start, and length of N repeats in target genome',
+        type=argparse.FileType('r')
+    )
+
+    # === PARAMETERS ===
+
+    parser.add_argument(
+        '--hit-flank-width',
+        help='width of the upstream and downstream flanks surrounding a gene in which to search for syntenic blocks',
+        type=int,
+        default=25000
     )
 
     parser.add_argument(
-        '-w', '--context_width',
+        '--hit-min-neighbors',
+        help='the minimum number of syntenic blocks near a gene which must be near a hit in order to keep the hit',
+        type=int,
+        default=3
+    )
+
+    parser.add_argument(
+        '--hit-winnow',
+        help='whether to keep hits that overlap a better hit',
+        type=bool,
+        default=False
+    )
+
+    parser.add_argument(
+        '--hit-target-flank-ratio',
+        help='the ratio between the query and target context widths',
+        type=float,
+        default=2
+    )
+
+    parser.add_argument(
+        '--syn-context-width',
         help='the number of upstream and downstream synteny blocks to include in the analysis',
         metavar='N',
         type=int,
@@ -71,9 +100,7 @@ def parse(argv=None):
     args = parser.parse_args(argv)
     return(args)
 
-
-if __name__ == '__main__':
-    args = parse()
+def prepare_output_directory(args):
     try:
         os.mkdir(args.output_dir)
     except FileExistsError:
@@ -82,11 +109,26 @@ if __name__ == '__main__':
     except PermissionError:
         err("You don't have permission to make directory '%s'" % args.output_dir)
 
+
+if __name__ == '__main__':
+    args = parse()
+
+    hit_merger = hit_merger.HitMerger(
+        flank_width        = args.hit_flank_width,
+        min_neighbors      = args.hit_min_neighbors,
+        winnow             = args.hit_winnow,
+        target_flank_ratio = args.hit_target_flank_ratio
+    )
+
+    syn_merger = syn_merger.SynMerger(
+        width = args.syn_context_width
+    )
+
     res = result_manager.ResultManager(
-        gen        = genome.Genome(args.gff),
-        syn        = synteny.Synteny(args.synteny),
-        exo        = exonerate.Exonerate(args.exonerate),
-        hit_merger = hit_merger.HitMerger(),
-        syn_merger = syn_merger.SynMerger()
+        gen        = genome.Genome(args.gen_file),
+        syn        = synteny.Synteny(args.syn_file),
+        exo        = exonerate.Exonerate(args.hit_file),
+        hit_merger = hit_merger,
+        syn_merger = syn_merger
     )
     res.write()
