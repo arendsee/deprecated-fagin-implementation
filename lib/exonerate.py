@@ -42,20 +42,12 @@ class Exonerate_hit:
         return(out)
 
 class Exonerate:
-    def __init__(self, _file, genome):
+    def __init__(self, _file):
         self._file = _file
-
-        # index GFF file by name
-        self.gene_map = {g.name:g for g in genome.intervals()}
 
     def generator(self):
         # skip the header
         next(self._file)
         for line in self._file:
             row = line.split('\t')
-
-            if not row[0] in self.gene_map:
-                print("Gene '%s' in exonerate data missing in GFF file, skipping record", file=sys.stderr)
-                continue
-
             yield Exonerate_hit(row=row)

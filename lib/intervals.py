@@ -10,6 +10,8 @@ def overlaps(a, b):
         return (a.stop >= b.start) and (a.start <= b.stop)
     except TypeError:
         return False
+    except AttributeError:
+        return False
 
 def get_preceding(ordint, n):
     '''
