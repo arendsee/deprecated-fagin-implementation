@@ -15,7 +15,9 @@ class ResultManager:
 
     def write(self):
         for r in self.results.values():
-            print(str(r))
+            s = str(r)
+            if s:
+                print(s)
 
 class Result:
     '''
