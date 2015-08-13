@@ -2,7 +2,7 @@ import sys
 import lib.intervals as intervals
 
 class HitMerger:
-    def __init__(self, flank_width=25000, min_neighbors=3, target_flank_ratio=2):
+    def __init__(self, flank_width, min_neighbors, target_flank_ratio):
         self.flank_width = flank_width
         self.min_neighbors = min_neighbors
         self.target_flank_ratio = target_flank_ratio

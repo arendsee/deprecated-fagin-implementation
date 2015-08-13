@@ -2,7 +2,7 @@ import itertools
 import lib.intervals as intervals
 
 class SynMerger:
-    def __init__(self, width=1):
+    def __init__(self, width):
         self.width=width
 
     def merge(self, result, syn):
