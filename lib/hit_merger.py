@@ -2,10 +2,9 @@ import sys
 import lib.intervals as intervals
 
 class HitMerger:
-    def __init__(self, flank_width=25000, min_neighbors=3, winnow=False, target_flank_ratio=2):
+    def __init__(self, flank_width=25000, min_neighbors=3, target_flank_ratio=2):
         self.flank_width = flank_width
         self.min_neighbors = min_neighbors
-        self.winnow = winnow
         self.target_flank_ratio = target_flank_ratio
 
     def merge(self, result, hit, syn):
@@ -15,10 +14,6 @@ class HitMerger:
         assert(hit.name == result.name)
 
         result.total_hits += 1
-
-        # If this hit is inferior to a prior hit, stop
-        if self.winnow:
-            return False
 
         anchor = syn.anchor_target(hit.target)
 
@@ -62,18 +57,4 @@ class HitMerger:
         if matching >= self.min_neighbors:
             result.hits.append(hit)
 
-    def _winnow(result, hit):
-        '''
-        skip if this hit overlaps an existing hit and the existing hit
-        1) has a higher score
-        2) does not have a stop or frameshift unless this hit does as well
-        3) the longest intron is under 100000 bases unless this hit is as well
-        '''
-        for i,h in enumerate(result.hits):
-            if intervals.overlaps(h.target, hit.target) and   \
-               hit.score <= h.score and                       \
-               (not (h.has_stop or h.has_frameshift) or       \
-                    (hit.has_stop or hit.has_frameshift)) and \
-               (h.max_intron < 1e5 or hit.max_intron >= 1e5):
-                return True
 

@@ -76,13 +76,6 @@ def parse(argv=None):
     )
 
     parser.add_argument(
-        '--hit-winnow',
-        help='whether to keep hits that overlap a better hit',
-        type=bool,
-        default=False
-    )
-
-    parser.add_argument(
         '--hit-target-flank-ratio',
         help='the ratio between the query and target context widths',
         type=float,
@@ -116,7 +109,6 @@ if __name__ == '__main__':
     hit_merger = hit_merger.HitMerger(
         flank_width        = args.hit_flank_width,
         min_neighbors      = args.hit_min_neighbors,
-        winnow             = args.hit_winnow,
         target_flank_ratio = args.hit_target_flank_ratio
     )
 
