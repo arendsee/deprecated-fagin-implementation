@@ -44,6 +44,14 @@ class Interval:
     def __str__(self):
         return('\t'.join((self.contig, str(self.start), str(self.stop))))
 
+    def __eq__(self, other):
+        return all((self.start == other.start,
+                   self.stop  == other.stop,
+                   self.contig == other.contig))
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
 class IntervalSet:
     def __init__(self, intervals):
         intervals = sorted(intervals, key = lambda x: (x.contig, x.start, x.stop))

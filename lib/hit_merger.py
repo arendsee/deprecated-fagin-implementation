@@ -25,6 +25,11 @@ class HitMerger:
                 print(msg % (result.gene.name, str(hit.target)), file=sys.stderr)
             return False
 
+        # stop if this hit already exists
+        for h in result.hits:
+            if h == hit:
+                return True
+
         # Define the interval in which to search for neighbors in the target
         target_flanks = intervals.Interval(
             contig=anchor.contig,

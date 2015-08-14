@@ -41,6 +41,18 @@ class Exonerate_hit:
         out = '\t'.join((str(x) for x in elements))
         return(out)
 
+    def __eq__(self, other):
+        return all(( self.target           == other.target,
+                     self.score            == other.score,
+                     self.gene             == other.gene,
+                     self.has_frameshift   == other.has_frameshift,
+                     self.num_split_codons == other.num_split_codons,
+                     self.num_intron       == other.num_intron,
+                     self.max_intron       == other.max_intron))
+
+    def __ne__(self, other):
+        return not self.__eq__(other)
+
 class Exonerate:
     def __init__(self, _file):
         self._file = _file
