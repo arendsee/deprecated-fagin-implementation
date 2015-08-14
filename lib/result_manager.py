@@ -1,5 +1,5 @@
 class ResultManager:
-    def __init__(self, gen, syn, exo, syn_merger, hit_merger):
+    def __init__(self, gen, syn, exo, syn_merger, hit_merger, hit_analyzer):
         self.results = {g.name: Result(g) for g in gen.intervals()}
 
         # merge in the synteny data
@@ -9,6 +9,8 @@ class ResultManager:
         # merge in the exonerate hit data
         for hit in exo.generator():
             hit_merger.merge(result=self.results[hit.name], hit=hit, syn=syn)
+
+        hit_analyzer.filter(self.results)
 
     def get(self, name):
         return self.results[name]
@@ -46,5 +48,3 @@ class Result:
         # out = '\t'.join((self.gene.name, str(self.is_present), str(self.is_simple)))
         out = '\n'.join([str(h) for h in self.hits])
         return(out)
-
-
