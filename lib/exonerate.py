@@ -21,19 +21,19 @@ class Exonerate_hit:
 
         try:
             (self.score,
-             self.has_stop,
+             self.first_stop,
              self.has_frameshift,
              self.num_split_codons,
              self.num_intron,
              self.max_intron) = (int(x) for x in row[8:])
         except ValueError:
-            err('score, has_stop, has_frameshift, num_split_codons, num_intron, max_intron columns in exonerate file must all be integers')
+            err('score, first_stop, has_frameshift, num_split_codons, num_intron, max_intron columns in exonerate file must all be integers')
 
     def __str__(self):
         elements = (self.gene,
                     self.target,
                     self.score,
-                    self.has_stop,
+                    self.first_stop,
                     self.has_frameshift,
                     self.num_split_codons,
                     self.num_intron,
