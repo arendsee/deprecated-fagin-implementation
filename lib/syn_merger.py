@@ -70,6 +70,10 @@ class SynMerger:
         return(everything)
 
     def _get_is_simple(self, anchor, context):
+        # There will be no context if the gene is alone on its contig
+        if(not context):
+            return False
+
         # are all the intervals on the same contig?
         all_on_same_contig = intervals.allequal((x.contig for x in context))
 
