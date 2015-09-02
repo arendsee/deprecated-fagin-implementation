@@ -74,8 +74,8 @@ class IntervalSet:
 
     def anchor(self, other):
         '''
-        Returns the index of a block overlapping the gene or, if the gene
-        overlaps no syntenic block, an adjacent block in log(n) time.
+        Returns the index of an interval that overlaps other, or, if none are
+        found, returns an adjacent block. Runs in log(n) time.
         '''
 
         # return None if the contig of the input is not in the interval set
@@ -92,7 +92,12 @@ class IntervalSet:
         i = high // 2
 
         # maximum number of steps to find solution
-        steps = math.ceil(math.log2(high - low)) + 1
+        try:
+            steps = max(math.ceil(math.log2(high - low)) + 1, 2)
+        except ValueError:
+            # this exception will occur when there is only one interval on a
+            # contig, in this case simply return that one interval
+            return con[0]
 
         # binary search
         for _ in range(steps):
