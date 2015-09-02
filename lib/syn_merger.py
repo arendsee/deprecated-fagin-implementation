@@ -22,14 +22,14 @@ class SynMerger:
             links = self._get_links(result=result, anchor=anchor)
             result.lower, result.upper = self._get_flanks(result=result, links=links, anchor=anchor)
 
-            context = self._get_context(result=result, anchor=anchor, links=links)
+            context = self._get_context(result=result, links=links)
 
             # does the gene overlap a syntenic block?
             result.is_present = bool(links)
 
             # are the upstream and downstream blocks in order on the same
             # chromosome?
-            result.is_simple = self._get_is_simple(anchor=anchor, context=context)
+            result.is_simple = self._get_is_simple(anchor=anchor, context=context, syn=syn)
 
     def _get_links(self, result, anchor):
         '''
@@ -60,42 +60,33 @@ class SynMerger:
             lower, upper = (links[0].last, links[-1].next)
         return((lower, upper))
 
-    def _get_context(self, result, anchor, links):
+    def _get_context(self, result, links):
         '''
-        get all blocks on the query between, but not including, the flanking genes
+        get all syntenic blocks that overlap the gene along with the WIDTH blocks up and down stream
         '''
-        lower_context = intervals.get_preceding(result.lower, self.width)
-        upper_context = intervals.get_following(result.upper, self.width)
-        everything = [x for x in itertools.chain(lower_context, links, upper_context) if x]
-        return(everything)
+        lower_context = intervals.get_preceding(result.lower, self.width - 1)
+        upper_context = intervals.get_following(result.upper, self.width - 1)
+        everything = itertools.chain(lower_context, [result.lower], links, [result.upper], upper_context)
+        return([x for x in everything if x])
 
-    def _get_is_simple(self, anchor, context):
-        # There will be no context if the gene is alone on its contig
-        if(not context):
-            return False
-
+    def _get_is_simple(self, anchor, context, syn):
         # are all the intervals on the same contig?
-        all_on_same_contig = intervals.allequal((x.contig for x in context))
+        all_on_same_contig = intervals.allequal((x.over.contig for x in context))
 
         # make an interval describing the start and stop of the query context
-        minstart = min(x.start for x in context)
-        maxstop  = max(x.stop  for x in context)
-        query_bound = intervals.Interval(contig=anchor.contig, start=minstart, stop=maxstop)
-
-        # do all the syntenic blocks within the target range map to regions within the query range?
-        t = sorted(context, key=lambda x: (x.over.start))
-        q = t[0]
+        qminstart = min(x.start for x in context)
+        qmaxstop  = max(x.stop  for x in context)
+        tminstart = min(x.over.start for x in context)
+        tmaxstop  = max(x.over.stop  for x in context)
+        query_bound  = intervals.Interval(contig=anchor.contig, start=qminstart, stop=qmaxstop)
+        target_bound = intervals.Interval(contig=anchor.over.contig, start=tminstart, stop=tmaxstop)
         has_outer = False
-        while True:
-            if not q:
-                break
-            elif q.start > t[-1].stop:
-                break
-            elif not intervals.overlaps(q.over, query_bound):
+        for q in syn.target.get_overlapping(target_bound):
+            if not intervals.overlaps(query_bound, q.over):
                 has_outer = True
                 break
-            else:
-                q = q.next
+
+        print([all_on_same_contig, has_outer])
 
         is_simple = all_on_same_contig and not has_outer
         return(is_simple)
