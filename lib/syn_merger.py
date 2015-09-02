@@ -86,8 +86,6 @@ class SynMerger:
                 has_outer = True
                 break
 
-        print([all_on_same_contig, has_outer])
-
         is_simple = all_on_same_contig and not has_outer
         return(is_simple)
 

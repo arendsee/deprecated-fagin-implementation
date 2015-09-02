@@ -33,11 +33,11 @@ class Result:
         # -------------------------------------------
         self.is_present = False
         self.is_simple  = False
-        self.lower = None  # the block downstream of the last homologous block
-        self.upper = None  # the block upstream of the last homologous block
+        self.lower = None # the block downstream of the last homologous block
+        self.upper = None # the block upstream of the last homologous block
 
         # --- variables set by HitMerger ---
-        # -----------------------------------------------------
+        # -------------------------------------------
         # declaration of an interval containing the flanks around the gene
         # in the query
         self.query_flanks = None

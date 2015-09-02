@@ -1,153 +1,177 @@
 #!/usr/bin/env python3
 
 import fagin
+import lib.intervals as intervals
+import lib.genome as genome
+import lib.syn_merger as syn_merger
+import lib.synteny as synteny
+import lib.result_manager as rMan
 import unittest
 
-class TestSynteny(unittest.TestCase):
+class TestIntervals(unittest.TestCase):
     def setUp(self):
-        self.syn = fagin.Synteny((
-            't1 10  20  q1 10  20  .5 +',
-            't1 30  40  q1 30  40  .5 +',
-            't1 50  60  q1 50  60  .5 +'
-        ))
-        self.queryunsorted = fagin.Synteny((
-            'a 0  1  q1 10  20  .5 +',
-            'b 0  1  q2  0   6  .5 +',
-            'c 0  1  q2  0   5  .5 +',
-            'd 0  1  q1 30  40  .5 +'
-        ))
-        self.targetunsorted = fagin.Synteny((
-            't1 10  20  a 0  1  .5 +',
-            't2  0   6  b 0  1  .5 +',
-            't2  0   5  c 0  1  .5 +',
-            't1 30  40  d 0  1  .5 +'
-        ))
+        self.a = intervals.Interval(contig='a', start=1, stop=9)
+        self.b = intervals.Interval(contig='a', start=1, stop=10)
+        self.c = intervals.Interval(contig='a', start=10, stop=11)
+        self.d = intervals.Interval(contig='a', start=11, stop=19)
+        self.e = intervals.Interval(contig='a', start=20, stop=21)
+        self.f = intervals.Interval(contig='a', start=1, stop=30)
+        self.g = intervals.Interval(contig='a', start=21, stop=30)
+        self.h = intervals.Interval(contig='b', start=7, stop=14)
+
     def test_overlaps(self):
-        self.assertTrue(self.syn.overlaps(fagin.Gene('q1', 25, 35, '.'), 1))
-    def test_after(self):
-        self.assertTrue(self.syn.before(fagin.Gene('q1', 10, 20, '.'), 1))
-    def test_query_sorted(self):
-        correct_order = ('a', 'd', 'c', 'b')
-        for block, correct_tchr in zip(self.queryunsorted.blocks, correct_order):
-            self.assertTrue(block.tchr == correct_tchr)
-    def test_query_index_ends(self):
-        # last on chromosome, so has no next
-        self.assertFalse(self.queryunsorted.blocks[1].qnext)
-        self.assertFalse(self.queryunsorted.blocks[3].qnext)
-    def test_query_index_starts(self):
-        # first on chromosome, so has no previous
-        self.assertFalse(self.queryunsorted.blocks[0].qprevious)
-        self.assertFalse(self.queryunsorted.blocks[2].qprevious)
-    def test_query_index_next(self):
-        self.assertTrue(self.queryunsorted.blocks[0].qnext.tchr == 'd')
-        self.assertTrue(self.queryunsorted.blocks[2].qnext.tchr == 'b')
-    def test_query_index_previous(self):
-        self.assertTrue(self.queryunsorted.blocks[1].qprevious.tchr == 'a')
-        self.assertTrue(self.queryunsorted.blocks[3].qprevious.tchr == 'c')
-    def test_target_index_ends(self):
-        self.assertFalse(self.targetunsorted.blocks[1].qnext)
-        self.assertFalse(self.targetunsorted.blocks[3].qnext)
-    def test_target_index_starts(self):
-        self.assertFalse(self.targetunsorted.blocks[0].qprevious)
-        self.assertFalse(self.targetunsorted.blocks[2].qprevious)
-    def test_target_index_next(self):
-        self.assertTrue(self.targetunsorted.blocks[0].tnext.qchr == 'd')
-        self.assertTrue(self.targetunsorted.blocks[2].tnext.qchr == 'b')
-    def test_target_index_previous(self):
-        self.assertTrue(self.targetunsorted.blocks[1].tprevious.qchr == 'c')
-        self.assertTrue(self.targetunsorted.blocks[3].tprevious.qchr == 'a')
+        a = intervals.Interval(contig='a', start=10, stop=20)
+        self.assertFalse(intervals.overlaps(a, self.a))
+        self.assertTrue(intervals.overlaps( a, self.b))
+        self.assertTrue(intervals.overlaps( a, self.c))
+        self.assertTrue(intervals.overlaps( a, self.d))
+        self.assertTrue(intervals.overlaps( a, self.e))
+        self.assertTrue(intervals.overlaps( a, self.f))
+        self.assertFalse(intervals.overlaps(a, self.g))
+        self.assertFalse(intervals.overlaps(a, self.h))
+    def test_allequal(self):
+        self.assertTrue(intervals.allequal([1,1,1,1]))
+        self.assertTrue(intervals.allequal(['a', 'a', 'a', 'a']))
 
-
-    def test_before(self):
-        self.assertTrue(self.syn.after(fagin.Gene('q1', 50, 60, '.'), 1))
-
-class TestBlock(unittest.TestCase):
+class TestIntervalSet(unittest.TestCase):
     def setUp(self):
-        self.block = fagin.Block('qqq', 10, 20, 'ttt', 100, 120, 0.5)
-        self.before_gene = fagin.Gene('qqq', 1, 5, 'a')
-        self.low_overlap_gene = fagin.Gene('qqq', 5, 12, 'a')
-        self.inside_gene = fagin.Gene('qqq', 12, 18, 'a')
-        self.high_overlap_gene = fagin.Gene('qqq', 15, 25, 'a')
-        self.over_gene = fagin.Gene('qqq', 5, 25, 'a')
-        self.after_gene = fagin.Gene('qqq', 30, 40, 'a')
-    def test_overlaps(self):
-        self.assertTrue(not self.block.overlaps(self.before_gene))
-        self.assertTrue(self.block.overlaps(self.low_overlap_gene))
-        self.assertTrue(self.block.overlaps(self.inside_gene))
-        self.assertTrue(self.block.overlaps(self.high_overlap_gene))
-        self.assertTrue(self.block.overlaps(self.over_gene))
-        self.assertTrue(not self.block.overlaps(self.after_gene))
-    def test_after(self):
-        self.assertTrue(not self.block.after(self.before_gene))
-        self.assertTrue(not self.block.after(self.low_overlap_gene))
-        self.assertTrue(not self.block.after(self.inside_gene))
-        self.assertTrue(not self.block.after(self.high_overlap_gene))
-        self.assertTrue(not self.block.after(self.over_gene))
-        self.assertTrue(self.block.after(self.after_gene))
-    def test_before(self):
-        self.assertTrue(self.block.before(self.before_gene))
-        self.assertTrue(not self.block.before(self.low_overlap_gene))
-        self.assertTrue(not self.block.before(self.inside_gene))
-        self.assertTrue(not self.block.before(self.high_overlap_gene))
-        self.assertTrue(not self.block.before(self.over_gene))
-        self.assertTrue(not self.block.before(self.after_gene))
+        self.a = genome.Gene(contig='c1', start=1,  stop=10, name='a')
+        self.b = genome.Gene(contig='c1', start=12, stop=15, name='b')
+        self.c = genome.Gene(contig='c1', start=12, stop=17, name='c')
+        self.d = genome.Gene(contig='c1', start=13, stop=16, name='d')
+        self.e = genome.Gene(contig='c1', start=13, stop=16, name='e')
+        self.f = genome.Gene(contig='c2', start=5,  stop=10, name='f')
+        self.intset = intervals.IntervalSet([self.a, self.b, self.c, self.d, self.e, self.f])
+
+        self.anchor_set = intervals.IntervalSet((
+            genome.Gene(name='a', contig='a', start=10, stop=20),
+            genome.Gene(name='b', contig='a', start=30, stop=40),
+            genome.Gene(name='c', contig='a', start=50, stop=60),
+            genome.Gene(name='d', contig='a', start=70, stop=80),
+            genome.Gene(name='e', contig='b', start=0,  stop=5 ),
+            genome.Gene(name='f', contig='c', start=5,  stop=10),
+            genome.Gene(name='g', contig='c', start=15, stop=20)
+        ))
+
+    def test_sorting(self):
+        i1 = intervals.IntervalSet([self.b, self.a, self.c, self.d, self.e, self.f])
+        self.assertTrue(list(i1.intervals()) == list(self.intset.intervals()))
+
+        i2 = intervals.IntervalSet([self.f, self.a, self.b, self.c, self.d, self.e])
+        self.assertTrue(list(i2.intervals()) == list(self.intset.intervals()))
+
+        i3 = intervals.IntervalSet([self.a, self.c, self.b, self.d, self.e, self.f])
+        self.assertTrue(list(i3.intervals()) == list(self.intset.intervals()))
+
+        i4 = intervals.IntervalSet([self.a, self.b, self.c, self.e, self.d, self.f])
+        self.assertTrue(list(i4.intervals()) == list(self.intset.intervals()))
+
+    def test_order(self):
+        self.assertTrue(self.a.last == None)
+        self.assertTrue(self.b.last.name == 'a')
+        self.assertTrue(self.c.last.name == 'b')
+        self.assertTrue(self.d.last.name == 'c')
+        self.assertTrue(self.e.last.name == 'd')
+
+        self.assertTrue(self.a.next.name == 'b')
+        self.assertTrue(self.b.next.name == 'c')
+        self.assertTrue(self.c.next.name == 'd')
+        self.assertTrue(self.d.next.name == 'e')
+        self.assertTrue(self.e.next == None)
+
+        self.assertTrue(self.f.last == None)
+        self.assertTrue(self.f.next == None)
+
+    def test_anchor_for_overlap_cases(self):
+
+        a  = self.anchor_set.anchor(intervals.Interval('a',  0, 5  ))
+        b  = self.anchor_set.anchor(intervals.Interval('a', 21, 31 ))
+        d  = self.anchor_set.anchor(intervals.Interval('a', 75, 95 ))
+        cd = self.anchor_set.anchor(intervals.Interval('a', 61, 69 ))
+        self.assertTrue(a.name == 'a')
+        self.assertTrue(b.name == 'b')
+        self.assertTrue(d.name == 'd')
+        self.assertTrue(cd.name == 'c' or cd.name == 'd')
+
+    def test_anchor_for_single_interval_contigs(self):
+        e  = self.anchor_set.anchor(intervals.Interval('b', 90, 100))
+        self.assertTrue(e.name == 'e')
+
+    def test_anchor_for_two_interval_contigs(self):
+        f  = self.anchor_set.anchor(intervals.Interval('c', 0, 2))
+        fg = self.anchor_set.anchor(intervals.Interval('c', 12, 13))
+        g  = self.anchor_set.anchor(intervals.Interval('c', 21, 22))
+        self.assertTrue(f.name == 'f')
+        self.assertTrue(fg.name == 'f' or fg.name == 'g')
+        self.assertTrue(g.name == 'g')
+    def test_get_preceding(self):
+        self.assertTrue([x.name for x in intervals.get_preceding(self.c, 2)] == ['b', 'a'])
+    def test_get_following(self):
+        self.assertTrue([x.name for x in intervals.get_following(self.c, 2)] == ['d', 'e'])
+    def test_get_overlapping_single(self):
+        bound = intervals.Interval('c1', start=17, stop=20)
+        self.assertTrue([x.name for x in self.intset.get_overlapping(bound)] == ['c'])
+    def test_get_overlapping_none(self):
+        bound = intervals.Interval('c1', start=20, stop=30)
+        self.assertTrue([x.name for x in self.intset.get_overlapping(bound)] == [])
+    def test_get_overlapping_multiple(self):
+        bound = intervals.Interval('c1', start=11, stop=13)
+        self.assertTrue(set([x.name for x in self.intset.get_overlapping(bound)]) == {'b', 'c', 'd', 'e'})
 
 class TestContext(unittest.TestCase):
     def setUp(self):
-        syndata = (
-            't1 10  20  q1 10  20  .5 +',
-            't1 30  40  q1 30  40  .5 +',
-            't1 50  60  q1 50  60  .5 +',
-            't1 50  60  q1 50  60  .5 +',
-            't1 80  90  q1 80  90  .5 +',
-            't1 100 120 q2 100 120 .5 +',
-            't1 150 200 q2 150 200 .5 +',
-            't1 250 270 q2 250 270 .5 +',
-            't1 10  20  q3 10  20  .5 +',
-            't1 30  40  q3 30  40  .5 +',
-            't1 50  60  q3 50  60  .5 +'
-        )
-        synshort = (
-            't1 10  20  q1 10  20  .5 +',
-            't1 30  40  q1 30  40  .5 +',
-            't1 50  60  q1 50  60  .5 +',
-        )
-        self.syn = fagin.Synteny(syndata)
-        self.synone = fagin.Synteny(synshort)
-    def test_synteny_overlap_TRUE(self):
-        self.assertTrue(fagin.Context(syn=self.syn, gene=fagin.Gene('q1', 25,  35, '.')).match)
-        self.assertTrue(fagin.Context(syn=self.syn, gene=fagin.Gene('q1', 32,  38, '.')).match)
-        self.assertTrue(fagin.Context(syn=self.syn, gene=fagin.Gene('q1', 35,  45, '.')).match)
-        self.assertTrue(fagin.Context(syn=self.syn, gene=fagin.Gene('q1', 25,  45, '.')).match)
-        self.assertTrue(fagin.Context(syn=self.syn, gene=fagin.Gene('q1',  0, 200, '.')).match)
-    def test_synteny_overlap_FALSE(self):
-        self.assertTrue(not fagin.Context(syn=self.syn, gene=fagin.Gene('q1',  0, 5,   '.')).match)
-        self.assertTrue(not fagin.Context(syn=self.syn, gene=fagin.Gene('q1', 22, 28,  '.')).match)
-        self.assertTrue(not fagin.Context(syn=self.syn, gene=fagin.Gene('q1', 95, 100, '.')).match)
-    def test_synteny_overlap_different_chromosomes(self):
-        self.assertTrue(not fagin.Context(syn=self.syn, gene=fagin.Gene('q1', 175, 225, '.')).match)
-        self.assertTrue(not fagin.Context(syn=self.syn, gene=fagin.Gene('q2',  22,  28, '.')).match)
-    def test_synteny_edges(self):
-        self.assertTrue(fagin.Context(syn=self.synone, gene=fagin.Gene('q1',  5, 15, '.'  )).match)
-        self.assertTrue(fagin.Context(syn=self.syn,    gene=fagin.Gene('q1', 85, 95, '.'  )).match)
+        self.syn_simple = synteny.Synteny(rows = (
+            ('q1', 10, 20, 'c1', 10, 20, 1, '+'),
+            ('q1', 50, 60, 'c1', 50, 60, 1, '+')
+        ))
+        self.syn_not_simple = synteny.Synteny(rows = (
+            ('q1', 10, 20, 'c2', 10, 20, 1, '+'),
+            ('q1', 50, 60, 'c1', 50, 60, 1, '+')
+        ))
+        self.syn_not_simple_insertion = synteny.Synteny(rows = (
+            ('q1',  10,  20, 'c1', 10, 20, 1, '+'),
+            ('q1', 100, 180, 'c1', 30, 40, 1, '+'),
+            ('q1',  50,  60, 'c1', 50, 60, 1, '+')
+        ))
+        self.missing_gene = genome.Gene(contig='q1', start=30, stop=40, name='missing')
+        self.present_gene = genome.Gene(contig='q1', start=15, stop=25, name='present')
 
-    def _context_lengths(self, context_obj, up, over, down):
-        b = context_obj.query_context
-        return(sum([x[0] == 'upstream'   for x in b]) == up   and
-               sum([x[0] == 'overlap'    for x in b]) == over and
-               sum([x[0] == 'downstream' for x in b]) == down)
-    def test_query_context_overlapping(self):
-        c = fagin.Context(syn=self.syn, gene=fagin.Gene('q1', 25, 35, '.'))
-        self.assertTrue(self._context_lengths(context_obj=c, up=1, over=1, down=3))
-    def test_query_context_non_overlapping(self):
-        c = fagin.Context(syn=self.syn, gene=fagin.Gene('q1', 22, 28, '.'))
-        self.assertTrue(self._context_lengths(context_obj=c, up=1, over=0, down=4))
-    def test_query_context_width_down(self):
-        c = fagin.Context(syn=self.syn, gene=fagin.Gene('q1', 0, 5, '.'), width=3)
-        self.assertTrue(self._context_lengths(context_obj=c, up=0, over=0, down=3))
-    def test_query_context_width_up(self):
-        c = fagin.Context(syn=self.syn, gene=fagin.Gene('q1', 1000, 1005, '.'), width=3)
-        self.assertTrue(self._context_lengths(context_obj=c, up=3, over=0, down=0))
+    def _get_result(self, gene, syn, width=1):
+        synmer = syn_merger.SynMerger(width)
+        result = rMan.Result(gene=gene)
+        synmer.merge(result=result, syn=syn)
+        return(result)
+
+    def test_is_present(self):
+        result = self._get_result(self.missing_gene, self.syn_simple)
+        self.assertFalse(result.is_present)
+
+        result = self._get_result(self.present_gene, self.syn_simple)
+        self.assertTrue(result.is_present)
+
+    def test_upper_and_lower(self):
+        result = self._get_result(self.missing_gene, self.syn_simple)
+        self.assertTrue(result.upper)
+        self.assertTrue(result.lower)
+
+        # Since the gene overlaps the lowest syntenic block, no non-overlapped
+        # region is lower. Having this test prevents much mischief.
+        result = self._get_result(self.present_gene, self.syn_simple)
+        self.assertTrue(result.upper)
+        self.assertFalse(result.lower)
+
+    def test_is_simple(self):
+        result = self._get_result(self.present_gene, self.syn_simple)
+        self.assertTrue(result.is_simple)
+
+        result = self._get_result(self.missing_gene, self.syn_simple)
+        self.assertTrue(result.is_simple)
+
+        result = self._get_result(self.missing_gene, self.syn_not_simple)
+        self.assertFalse(result.is_simple)
+
+        result = self._get_result(self.missing_gene, self.syn_not_simple_insertion)
+        self.assertFalse(result.is_simple)
 
 
 if __name__ == '__main__':
