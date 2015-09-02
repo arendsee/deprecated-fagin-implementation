@@ -113,6 +113,23 @@ class IntervalSet:
         else:
             return this
 
+    def get_overlapping(self, bound, sort=True):
+        anchor = self.anchor(bound)
+        if not overlaps(anchor, bound):
+            return []
+        overlapping = [anchor]
+        q = anchor.last
+        while q and overlaps(bound, q):
+            overlapping.append(q)
+            q = q.last
+        q = anchor.next
+        while q and overlaps(bound, q):
+            overlapping.append(q)
+            q = q.next
+        if sort:
+            overlapping = sorted(overlapping, key=lambda x: (x.start, x.stop))
+        return(overlapping)
+
 class OrderedInterval(Interval):
     def __init__(self, last=None, next=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
