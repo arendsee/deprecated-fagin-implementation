@@ -4,11 +4,14 @@ def err(msg):
     sys.exit(msg)
 
 class Tabular:
-    def __init__(self, tab_data, validate=True):
-        try:
-            rows = tuple(s.split() for s in tab_data if s[0] != '#')
-        except TypeError:
+    def __init__(self, tab_data=None, rows=None, validate=True):
+        if not tab_data and not rows:
             self._missing_input_error()
+        elif tab_data and not rows:
+            try:
+                rows = tuple(s.split() for s in tab_data if s[0] != '#')
+            except TypeError:
+                self._missing_input_error()
         self._load_rows(rows)
         if validate:
             self._validate_row_lengths(rows)
