@@ -7,7 +7,7 @@ def allequal(x):
 
 def overlaps(a, b):
     try:
-        return (a.stop >= b.start) and (a.start <= b.stop)
+        return (a.contig == b.contig) and (a.stop >= b.start) and (a.start <= b.stop)
     except TypeError:
         return False
     except AttributeError:
@@ -37,17 +37,20 @@ def get_following(ordint, n):
 
 class Interval:
     def __init__(self, contig, start, stop):
-        self.start = start
-        self.stop = stop
-        self.contig = contig
+        try:
+            self.contig = contig
+            self.start = int(start)
+            self.stop = int(stop)
+        except ValueError:
+            err('The start and stop positions of an interval must be integers')
 
     def __str__(self):
         return('\t'.join((self.contig, str(self.start), str(self.stop))))
 
     def __eq__(self, other):
-        return all((self.start == other.start,
-                   self.stop  == other.stop,
-                   self.contig == other.contig))
+        return all((self.start  == other.start,
+                    self.stop   == other.stop,
+                    self.contig == other.contig))
 
     def __ne__(self, other):
         return not self.__eq__(other)
