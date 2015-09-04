@@ -8,9 +8,12 @@ class ResultManager:
 
         # merge in the exonerate hit data
         for hit in exo.generator():
-            hit_merger.merge(result=self.results[hit.name], hit=hit, syn=syn)
+            try:
+                hit_merger.merge(result=self.results[hit.name], hit=hit, syn=syn)
+            except KeyError:
+                err('The gene {} in the hit file is missing from the gff file' % hit.name)
 
-        hit_analyzer.filter(self.results)
+        # hit_analyzer.filter(self.results)
 
     def get(self, name):
         return self.results[name]
